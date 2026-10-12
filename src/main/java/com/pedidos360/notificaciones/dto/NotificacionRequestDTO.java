@@ -48,4 +48,14 @@ public class NotificacionRequestDTO {
     public void setMensaje(String mensaje) {
         this.mensaje = mensaje;
     }
+
+    public String getCuerpo() {
+        return mensaje;
+    }
+
+    public void setCuerpo(String cuerpo) {
+        if (this.mensaje == null || this.mensaje.isEmpty()) {
+            this.mensaje = cuerpo;
+        }
+    }
 }
