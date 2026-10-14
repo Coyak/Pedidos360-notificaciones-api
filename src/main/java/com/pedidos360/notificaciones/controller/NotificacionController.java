@@ -17,7 +17,7 @@ import java.util.Map;
  * Soporta endpoints bajo /api/notificaciones y /api/email para compatibilidad total con la guía docente.
  */
 @RestController
-@CrossOrigin(origins = "*", allowedHeaders = "*")
+@CrossOrigin(originPatterns = "*", allowedHeaders = "*")
 @RequestMapping({"/api/notificaciones", "/api/email"})
 public class NotificacionController {
 
