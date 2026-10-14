@@ -32,10 +32,10 @@ public class NotificacionEmailService {
     @Autowired(required = false)
     private JavaMailSender mailSender;
 
-    @Value("${spring.mail.username:tu_correo@gmail.com}")
+    @Value("${spring.mail.username:pedidos360.tienda@gmail.com}")
     private String mailUsername;
 
-    @Value("${pedidos360.notificaciones.remitente:noreply@pedidos360.cloud}")
+    @Value("${pedidos360.notificaciones.remitente:pedidos360.tienda@gmail.com}")
     private String remitente;
 
     private final List<NotificacionResponseDTO> historial = new CopyOnWriteArrayList<>();
