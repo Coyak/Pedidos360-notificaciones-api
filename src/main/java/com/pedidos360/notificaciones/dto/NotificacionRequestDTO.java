@@ -1,5 +1,6 @@
 package com.pedidos360.notificaciones.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -15,6 +16,7 @@ public class NotificacionRequestDTO {
     private String asunto;
 
     @NotBlank(message = "El mensaje o cuerpo de la notificación no puede estar vacío")
+    @JsonAlias({"cuerpo", "body"})
     private String mensaje;
 
     public NotificacionRequestDTO() {}

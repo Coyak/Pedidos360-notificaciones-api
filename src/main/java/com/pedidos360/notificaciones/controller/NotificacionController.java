@@ -76,15 +76,16 @@ public class NotificacionController {
     public ResponseEntity<?> enviarNotificacionJson(
             @RequestBody NotificacionRequestDTO request) {
         try {
-            if (request.getDestinatario() == null || request.getAsunto() == null || request.getMensaje() == null) {
-                return ResponseEntity.badRequest().body("Campos 'destinatario', 'asunto' y 'mensaje' son obligatorios en el JSON.");
+            String cuerpo = request.getMensaje() != null ? request.getMensaje() : request.getCuerpo();
+            if (request.getDestinatario() == null || request.getAsunto() == null || cuerpo == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Campos 'destinatario', 'asunto' y 'mensaje' son obligatorios en el JSON."));
             }
-            emailService.enviarCorreo(request.getDestinatario(), request.getAsunto(), request.getMensaje());
+            request.setMensaje(cuerpo);
             NotificacionResponseDTO response = emailService.enviarNotificacionDirecta(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error al enviar el correo: " + e.getMessage());
+                    .body(Map.of("error", "Error al procesar la notificación: " + e.getMessage()));
         }
     }
 
