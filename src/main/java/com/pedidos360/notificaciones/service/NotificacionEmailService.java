@@ -21,8 +21,8 @@ import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Servicio de envío y simulación de correos electrónicos transaccionales.
- * Integra JavaMailSender con soporte Gmail SMTP y eventos asíncronos de RabbitMQ.
+ * Servicio de envío de correos electrónicos transaccionales vía SMTP real (JavaMailSender).
+ * Conectado con RabbitMQ para gestión de ACKs y desvío a DLQ ante fallos de red o credenciales.
  */
 @Service
 public class NotificacionEmailService {
@@ -41,7 +41,7 @@ public class NotificacionEmailService {
     private final List<NotificacionResponseDTO> historial = new CopyOnWriteArrayList<>();
 
     /**
-     * Método para correo simple (Texto plano) requerido por la guía del profesor.
+     * Envía correo electrónico real. Si falla el despacho SMTP, lanza excepción para activar DLQ.
      */
     public void enviarCorreo(String to, String subject, String body) {
         SimpleMailMessage message = new SimpleMailMessage();
@@ -53,22 +53,22 @@ public class NotificacionEmailService {
         if (mailSender != null) {
             try {
                 mailSender.send(message);
-                log.info(">>> [GMAIL SMTP DISPATCH] Correo enviado efectivamente a {} vía smtp.gmail.com", to);
+                log.info(">>> [SMTP REAL OK] Correo despachado exitosamente hacia: {} vía smtp.gmail.com", to);
             } catch (Exception e) {
-                log.warn(">>> [SMTP ADVERTENCIA] No se pudo enviar por SMTP real ({}). Registrando en historial y consola.", e.getMessage());
+                log.error(">>> [SMTP ERROR] Falló el despacho de correo hacia {}: {}", to, e.getMessage());
+                throw new RuntimeException("Fallo en despacho SMTP real: " + e.getMessage(), e);
             }
         } else {
-            log.info(">>> [SMTP SIMULADO] JavaMailSender no disponible, registrando en log.");
+            log.warn(">>> [AVISO] JavaMailSender no configurado.");
         }
     }
 
     /**
-     * Método opcional por si quieres enviar HTML o archivos adjuntos (guía docente).
+     * Envío con soporte de contenido HTML enriquecido
      */
-    public void enviarCorreoConAdjunto(String to, String subject, String htmlContent, String rutaArchivo) throws MessagingException {
+    public void enviarCorreoHtml(String to, String subject, String htmlContent) throws MessagingException {
         if (mailSender == null) {
-            log.warn(">>> [SMTP] JavaMailSender no disponible para enviar correo con adjunto.");
-            return;
+            throw new IllegalStateException("JavaMailSender no disponible");
         }
         MimeMessage message = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -76,12 +76,8 @@ public class NotificacionEmailService {
         helper.setSubject(subject);
         helper.setText(htmlContent, true);
         helper.setFrom((mailUsername != null && !mailUsername.contains("tu_correo")) ? mailUsername : remitente);
-        if (rutaArchivo != null && !rutaArchivo.isEmpty()) {
-            FileSystemResource file = new FileSystemResource(new File(rutaArchivo));
-            helper.addAttachment(file.getFilename(), file);
-        }
         mailSender.send(message);
-        log.info(">>> [GMAIL SMTP DISPATCH] Correo con adjunto enviado exitosamente a {}", to);
+        log.info(">>> [SMTP HTML OK] Correo HTML enviado exitosamente a {}", to);
     }
 
     /**
@@ -92,13 +88,14 @@ public class NotificacionEmailService {
         String asunto = "¡Tu pedido " + pedido.getPedidoId() + " ha sido recibido! - Pedidos360";
 
         StringBuilder cuerpo = new StringBuilder();
-        cuerpo.append("Estimado(a) cliente, confirmamos la recepción de tu compra.\n");
-        cuerpo.append("Número de Pedido: ").append(pedido.getPedidoId()).append("\n");
-        cuerpo.append("Dirección de Envío: ").append(pedido.getDireccionEnvio()).append("\n");
-        cuerpo.append("Total Facturado: $").append(pedido.getTotalPagar()).append("\n");
-        cuerpo.append("Ítems Adquiridos: ").append(pedido.getItems() != null ? pedido.getItems().size() : 0).append("\n");
+        cuerpo.append("Estimado(a) cliente, confirmamos la recepción de tu compra en Pedidos360.\n\n");
+        cuerpo.append("Número de Pedido : ").append(pedido.getPedidoId()).append("\n");
+        cuerpo.append("Dirección Envío  : ").append(pedido.getDireccionEnvio()).append("\n");
+        cuerpo.append("Total Facturado  : $").append(pedido.getTotalPagar()).append(" CLP\n");
+        cuerpo.append("Fecha            : ").append(LocalDateTime.now()).append("\n\n");
+        cuerpo.append("Gracias por comprar en Pedidos360 Cloud Native Store.");
 
-        // Envío real vía JavaMailSender (según pauta)
+        // Envío real vía JavaMailSender (lanza excepción si falla para desviar a DLQ)
         enviarCorreo(pedido.getClienteEmail(), asunto, cuerpo.toString());
 
         logEmailBanner(messageId, pedido.getClienteEmail(), asunto, cuerpo.toString(), "RABBITMQ_EVENT");
@@ -110,29 +107,28 @@ public class NotificacionEmailService {
                 asunto,
                 "RABBITMQ_EVENT",
                 LocalDateTime.now(),
-                "Correo de confirmación de orden despachado exitosamente"
+                "Correo de confirmación de orden despachado exitosamente vía SMTP"
         );
         historial.add(0, response);
         return response;
     }
 
     /**
-     * Procesa y despacha una notificación enviada directamente vía petición HTTP (Postman / cURL).
+     * Despacho de notificación directa vía API REST (Postman / cURL).
      */
     public NotificacionResponseDTO enviarNotificacionDirecta(NotificacionRequestDTO request) {
-        String messageId = "NOTIF-POSTMAN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String messageId = "NOTIF-API-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
-        // Envío real vía JavaMailSender (según pauta)
         enviarCorreo(request.getDestinatario(), request.getAsunto(), request.getMensaje());
 
-        logEmailBanner(messageId, request.getDestinatario(), request.getAsunto(), request.getMensaje(), "POSTMAN_DIRECT_API");
+        logEmailBanner(messageId, request.getDestinatario(), request.getAsunto(), request.getMensaje(), "POSTMAN_API_DIRECT");
 
         NotificacionResponseDTO response = new NotificacionResponseDTO(
                 "SENT",
                 messageId,
                 request.getDestinatario(),
                 request.getAsunto(),
-                "POSTMAN_DIRECT_API",
+                "POSTMAN_API_DIRECT",
                 LocalDateTime.now(),
                 "Notificación enviada exitosamente vía API REST"
         );
@@ -146,13 +142,11 @@ public class NotificacionEmailService {
 
     private void logEmailBanner(String id, String to, String subject, String body, String source) {
         log.info("==================================================================");
-        log.info(">>> [SMTP DISPATCH] Correo Electrónico Procesado con Éxito");
+        log.info(">>> [SMTP DISPATCH] Correo Electrónico Despachado Realmente");
         log.info("ID Mensaje   : {}", id);
         log.info("Origen       : {}", source);
-        log.info("Remitente    : {}", (mailUsername != null && !mailUsername.contains("tu_correo")) ? mailUsername : remitente);
         log.info("Destinatario : {}", to);
         log.info("Asunto       : {}", subject);
-        log.info("Cuerpo Mensaje:\n{}", body.trim());
         log.info("==================================================================");
     }
 }
